@@ -1,0 +1,6 @@
+routing/data/warsaw_walk_base.json
+backend/cache/
+.venv/
+cache/
+__pycache__/
+*.pyc

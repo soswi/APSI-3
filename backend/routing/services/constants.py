@@ -1,0 +1,11 @@
+WARSAW_CENTER_LAT = 52.2297
+WARSAW_CENTER_LNG = 21.0122
+WARSAW_BOUNDS = {
+    'min_lat': 52.097,
+    'max_lat': 52.367,
+    'min_lng': 20.851,
+    'max_lng': 21.271,
+}
+
+DEFAULT_WALKING_SPEED_MPS = 1.25
+MAX_SNAP_DISTANCE_M = 900.0

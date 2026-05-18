@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "description": "Example node score file for converting node weights into edge scores."
+  },
+  "nodes": [
+    {
+      "id": "123456",
+      "scores": {
+        "greenery_score": 0.72,
+        "air_quality_score": 0.64,
+        "noise_score": 0.58
+      }
+    },
+    {
+      "id": "123457",
+      "scores": {
+        "greenery_score": 0.81,
+        "air_quality_score": 0.69,
+        "noise_score": 0.61
+      }
+    }
+  ]
+}
