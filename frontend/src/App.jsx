@@ -6,9 +6,50 @@ import RoutePanel from './components/RoutePanel';
 import SavePathDialog from './components/SavePathDialog';
 import { reverseGeocodeWarsawPoint, searchWarsawAddresses } from './services/geocoding';
 
-const SAVED_PATHS_KEY = 'apsi.savedPaths';
-const RECENT_PATHS_KEY = 'apsi.recentPaths';
-const CURRENT_USER_KEY = 'apsi.currentUser';
+const CSRF_ENDPOINT = '/api/auth/csrf';
+const LOGIN_ENDPOINT = '/api/auth/login';
+const SIGNUP_ENDPOINT = '/api/auth/signup';
+const LOGOUT_ENDPOINT = '/api/auth/logout';
+const ME_ENDPOINT = '/api/auth/me';
+const RECENT_ENDPOINT = '/api/routes/recent';
+const SAVED_ENDPOINT = '/api/routes/saved';
+
+function getCookieValue(name) {
+  const match = document.cookie.match(new RegExp(`(^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+async function ensureCsrfCookie() {
+  await fetch(CSRF_ENDPOINT, { credentials: 'include' });
+}
+
+async function apiFetchJson(url, options = {}) {
+  const isUnsafeMethod = options.method && options.method !== 'GET';
+  const headers = new Headers(options.headers || {});
+
+  if (isUnsafeMethod) {
+    await ensureCsrfCookie();
+    const csrfToken = getCookieValue('csrftoken');
+    if (csrfToken) {
+      headers.set('X-CSRFToken', csrfToken);
+    }
+  }
+
+  const response = await fetch(url, {
+    credentials: 'include',
+    ...options,
+    headers,
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    const message = payload?.message || payload?.detail || 'Request failed.';
+    throw new Error(message);
+  }
+
+  return payload;
+}
 
 function formatTimestampLabel(timestamp) {
   return new Date(timestamp).toLocaleString('en-GB', {
@@ -25,6 +66,7 @@ function createPathSnapshot({
   startLabel,
   endLabel,
   route,
+  distance,
   greeneryPreference,
   noiseAvoidance,
   airQualityPreference,
@@ -40,6 +82,7 @@ function createPathSnapshot({
     startLabel,
     endLabel,
     route,
+    distance,
     saved: false,
     preferences: {
       greenery: greeneryPreference,
@@ -64,7 +107,6 @@ function App() {
   const [recentPaths, setRecentPaths] = useState([]);
   const [activePage, setActivePage] = useState('planner');
   const [currentUser, setCurrentUser] = useState(null);
-  const [isStorageReady, setIsStorageReady] = useState(false);
   const [activePathId, setActivePathId] = useState(null);
   const [pathToSave, setPathToSave] = useState(null);
   const [addressInputs, setAddressInputs] = useState({ start: '', end: '' });
@@ -131,61 +173,55 @@ function App() {
   }, [endPoint, endLabel]);
 
   useEffect(() => {
-    try {
-      const storedSavedPaths = window.localStorage.getItem(SAVED_PATHS_KEY);
-      const storedRecentPaths = window.localStorage.getItem(RECENT_PATHS_KEY);
-      const storedCurrentUser = window.localStorage.getItem(CURRENT_USER_KEY);
+    let ignore = false;
 
-      if (storedSavedPaths) {
-        setSavedPaths(JSON.parse(storedSavedPaths));
-      }
+    async function hydrateSession() {
+      try {
+        const payload = await apiFetchJson(ME_ENDPOINT);
+        if (ignore) {
+          return;
+        }
+        setCurrentUser(payload.user);
 
-      if (storedRecentPaths) {
-        setRecentPaths(JSON.parse(storedRecentPaths));
-      }
+        const [recent, saved] = await Promise.all([
+          apiFetchJson(RECENT_ENDPOINT),
+          apiFetchJson(SAVED_ENDPOINT),
+        ]);
 
-      if (storedCurrentUser) {
-        setCurrentUser(JSON.parse(storedCurrentUser));
+        if (ignore) {
+          return;
+        }
+
+        setRecentPaths(recent.routes || []);
+        setSavedPaths(saved.routes || []);
+      } catch {
+        if (!ignore) {
+          setCurrentUser(null);
+          setRecentPaths([]);
+          setSavedPaths([]);
+        }
       }
-    } catch (storageError) {
-      console.error('Unable to restore frontend data from local storage.', storageError);
     }
 
-    setIsStorageReady(true);
+    void hydrateSession();
+
+    return () => {
+      ignore = true;
+    };
   }, []);
-
-  useEffect(() => {
-    if (!isStorageReady) {
-      return;
-    }
-
-    window.localStorage.setItem(SAVED_PATHS_KEY, JSON.stringify(savedPaths));
-  }, [isStorageReady, savedPaths]);
-
-  useEffect(() => {
-    if (!isStorageReady) {
-      return;
-    }
-
-    window.localStorage.setItem(RECENT_PATHS_KEY, JSON.stringify(recentPaths));
-  }, [isStorageReady, recentPaths]);
-
-  useEffect(() => {
-    if (!isStorageReady) {
-      return;
-    }
-
-    if (currentUser) {
-      window.localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(currentUser));
-      return;
-    }
-
-    window.localStorage.removeItem(CURRENT_USER_KEY);
-  }, [currentUser, isStorageReady]);
 
   function clearAddressLookup(field) {
     setAddressResults((currentState) => ({ ...currentState, [field]: [] }));
     setAddressLookupError((currentState) => ({ ...currentState, [field]: null }));
+  }
+
+  async function refreshRouteHistory() {
+    const [recent, saved] = await Promise.all([
+      apiFetchJson(RECENT_ENDPOINT),
+      apiFetchJson(SAVED_ENDPOINT),
+    ]);
+    setRecentPaths(recent.routes || []);
+    setSavedPaths(saved.routes || []);
   }
 
   function assignPoint(field, point, label) {
@@ -314,10 +350,6 @@ function App() {
     setActivePage('planner');
   }
 
-  function rememberRecentPath(snapshot) {
-    setRecentPaths((currentPaths) => [snapshot, ...currentPaths]);
-  }
-
   function handleUseStoredPath(path) {
     setStartPoint(path.startPoint);
     setEndPoint(path.endPoint);
@@ -366,69 +398,131 @@ function App() {
       startLabel,
       endLabel,
       route,
+      distance: 0,
       greeneryPreference,
       noiseAvoidance,
       airQualityPreference,
     });
 
-    rememberRecentPath(fallbackSnapshot);
+    setRecentPaths((currentPaths) => [fallbackSnapshot, ...currentPaths]);
     setActivePathId(fallbackSnapshot.id);
     setPathToSave(fallbackSnapshot);
     setError(null);
   }
 
-  function handleConfirmSavePath(pathName) {
+  async function handleConfirmSavePath(pathName) {
     if (!pathToSave) {
       return;
     }
 
-    const savedSnapshot = {
-      ...pathToSave,
-      name: pathName,
-      saved: true,
-    };
+    if (!currentUser) {
+      setError('Sign in to save routes to your account.');
+      return;
+    }
 
-    setRecentPaths((currentPaths) => currentPaths.map((path) => (
-      path.id === savedSnapshot.id
-        ? { ...path, name: pathName, saved: true }
-        : path
-    )));
+    try {
+      const response = await apiFetchJson(`${SAVED_ENDPOINT}/${pathToSave.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: pathName,
+          saved: true,
+        }),
+      });
 
-    setSavedPaths((currentPaths) => {
-      const filteredPaths = currentPaths.filter((path) => path.id !== savedSnapshot.id);
-      return [savedSnapshot, ...filteredPaths];
-    });
+      const savedSnapshot = response.route;
 
-    setPathToSave(null);
+      setRecentPaths((currentPaths) => currentPaths.map((path) => (
+        path.id === savedSnapshot.id
+          ? { ...path, name: savedSnapshot.name, saved: true }
+          : path
+      )));
+
+      setSavedPaths((currentPaths) => {
+        const filteredPaths = currentPaths.filter((path) => path.id !== savedSnapshot.id);
+        return [savedSnapshot, ...filteredPaths];
+      });
+
+      setPathToSave(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save this route.');
+    }
   }
 
   function handleCancelSavePath() {
     setPathToSave(null);
   }
 
-  function handleRemoveSavedPath(pathId) {
-    setSavedPaths((currentPaths) => currentPaths.filter((path) => path.id !== pathId));
-    setRecentPaths((currentPaths) => currentPaths.map((path) => (
-      path.id === pathId
-        ? { ...path, saved: false }
-        : path
-    )));
+  async function handleRemoveSavedPath(pathId) {
+    if (!currentUser) {
+      return;
+    }
+
+    try {
+      const response = await apiFetchJson(`${SAVED_ENDPOINT}/${pathId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ saved: false }),
+      });
+
+      const updated = response.route;
+
+      setSavedPaths((currentPaths) => currentPaths.filter((path) => path.id !== pathId));
+      setRecentPaths((currentPaths) => currentPaths.map((path) => (
+        path.id === pathId
+          ? { ...path, saved: false, name: updated.name }
+          : path
+      )));
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'Unable to update this route.');
+    }
   }
 
-  function handleAuthSubmit(formData) {
-    const displayName = formData.name?.trim()
-      || formData.email.split('@')[0]
-      || 'Walker';
+  async function handleAuthSubmit(formData) {
+    const isSignup = activePage === 'signup';
+    const endpoint = isSignup ? SIGNUP_ENDPOINT : LOGIN_ENDPOINT;
+    const payload = isSignup
+      ? {
+        username: formData.name?.trim() || formData.email.split('@')[0],
+        email: formData.email,
+        password: formData.password,
+      }
+      : {
+        email: formData.email,
+        password: formData.password,
+      };
 
-    setCurrentUser({
-      name: displayName,
-      email: formData.email,
-    });
-    setActivePage('planner');
+    try {
+      const response = await apiFetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      setCurrentUser(response.user);
+      await refreshRouteHistory();
+      setActivePage('planner');
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Authentication failed.');
+    }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await apiFetchJson(LOGOUT_ENDPOINT, { method: 'POST' });
+    } catch {
+      // Ignore logout failures to avoid locking users in the UI.
+    }
+
     setCurrentUser(null);
+    setRecentPaths([]);
+    setSavedPaths([]);
     setActivePage('planner');
   }
 
@@ -442,7 +536,7 @@ function App() {
     setError(null);
 
     try {
-      const response = await fetch('/api/routes/walking', {
+      const responsePayload = await apiFetchJson('/api/routes/walking', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -450,14 +544,13 @@ function App() {
         body: JSON.stringify({
           start: startPoint,
           end: endPoint,
+          weights: {
+            greenery: greeneryPreference / 100,
+            noise: noiseAvoidance / 100,
+            air_quality: airQualityPreference / 100,
+          },
         }),
       });
-
-      const responsePayload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(responsePayload.message || 'Unable to calculate the route.');
-      }
 
       const computedRoute = Array.isArray(responsePayload.route) ? responsePayload.route : null;
 
@@ -471,6 +564,7 @@ function App() {
         startLabel,
         endLabel,
         route: computedRoute,
+        distance: responsePayload.distance_m ?? 0,
         greeneryPreference,
         noiseAvoidance,
         airQualityPreference,
@@ -480,8 +574,38 @@ function App() {
         setRoute(computedRoute);
       });
 
-      rememberRecentPath(snapshot);
-      setActivePathId(snapshot.id);
+      if (currentUser) {
+        try {
+          const recentResponse = await apiFetchJson(RECENT_ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              createdAt: snapshot.createdAt,
+              name: snapshot.name,
+              startPoint: snapshot.startPoint,
+              endPoint: snapshot.endPoint,
+              startLabel: snapshot.startLabel,
+              endLabel: snapshot.endLabel,
+              preferences: snapshot.preferences,
+              route: snapshot.route,
+              distance: snapshot.distance,
+              saved: false,
+            }),
+          });
+
+          const recentRoute = recentResponse.route;
+          setRecentPaths((currentPaths) => [recentRoute, ...currentPaths]);
+          setActivePathId(recentRoute.id);
+        } catch (historyError) {
+          setRecentPaths((currentPaths) => [snapshot, ...currentPaths]);
+          setActivePathId(snapshot.id);
+        }
+      } else {
+        setRecentPaths((currentPaths) => [snapshot, ...currentPaths]);
+        setActivePathId(snapshot.id);
+      }
     } catch (routeError) {
       setError(routeError instanceof Error ? routeError.message : 'Unable to calculate the route.');
     } finally {
