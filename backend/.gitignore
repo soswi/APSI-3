@@ -1,4 +1,6 @@
 routing/data/warsaw_walk_base.json
+routing/data/warsaw_node_scores.json
+routing/data/warsaw_walk_enriched.json
 backend/cache/
 .venv/
 cache/
