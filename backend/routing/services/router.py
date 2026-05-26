@@ -4,6 +4,7 @@ from .constants import WARSAW_BOUNDS
 from .graph_loader import load_graph
 from .models import Coordinate, RoutingError, UserWeights
 from .response import build_response_payload, build_route_geometry
+from .scoring import COST_MODEL_VERSION
 from .search import dijkstra
 from .snapping import create_temporary_overlay, snap_to_graph
 
@@ -55,11 +56,22 @@ def calculate_route(start_payload: dict, end_payload: dict, weights_payload: dic
         original_end=end,
     )
 
-    return build_response_payload(
+    response_payload = build_response_payload(
         route_coordinates=route_coordinates,
         route_edges=route_edges,
         start_snap=start_snap,
         end_snap=end_snap,
         algorithm_name='dijkstra',
-        cost_model_version=overlay_graph.metadata.get('cost_model_version', 'development-v1'),
+        cost_model_version=overlay_graph.metadata.get('cost_model_version', COST_MODEL_VERSION),
     )
+    response_payload['debug']['graph_version'] = overlay_graph.metadata.get('graph_version', 'unknown')
+    response_payload['debug']['environmental_scores_available'] = bool(
+        overlay_graph.metadata.get('environmental_scores_available')
+    )
+    response_payload['debug']['node_score_source'] = overlay_graph.metadata.get('node_score_source')
+    response_payload['debug']['preference_weights'] = {
+        'greenery': weights.greenery,
+        'air_quality': weights.air_quality,
+        'noise': weights.noise,
+    }
+    return response_payload

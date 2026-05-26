@@ -107,14 +107,20 @@ Current request body used by the frontend:
 ```json
 {
   "start": { "lat": 52.2297, "lng": 21.0122 },
-  "end": { "lat": 52.2100, "lng": 21.0300 }
+  "end": { "lat": 52.2100, "lng": 21.0300 },
+  "weights": {
+    "greenery": 0.7,
+    "noise": 0.5,
+    "air_quality": 0.6
+  }
 }
 ```
 
 Current goal:
 
-- test real shortest path on the walking graph
-- do not use user preferences yet
+- calculate real routes on the walking graph
+- use preference weights when the backend graph has environmental scores
+- fall back to distance-only behavior when only the base graph is available
 
 Current expected response body:
 
@@ -143,17 +149,7 @@ Current expected response body:
 
 The frontend only needs `route` to draw the polyline, but the extra fields are already accepted.
 
-Later, when preference-aware routing is turned on again, the request can be extended with:
-
-```json
-{
-  "weights": {
-    "greenery": 0.7,
-    "noise": 0.5,
-    "air_quality": 0.6
-  }
-}
-```
+The frontend sliders are stored as 0-100 percentages and sent to the backend as normalized 0-1 weights.
 
 ### 2. Login
 

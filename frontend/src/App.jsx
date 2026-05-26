@@ -49,6 +49,38 @@ function createPathSnapshot({
   };
 }
 
+function routeWeightsFromPreferences({
+  greeneryPreference,
+  noiseAvoidance,
+  airQualityPreference,
+}) {
+  return {
+    greenery: greeneryPreference / 100,
+    noise: noiseAvoidance / 100,
+    air_quality: airQualityPreference / 100,
+  };
+}
+
+async function readJsonResponse(response) {
+  const responseText = await response.text();
+
+  if (!responseText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    if (!response.ok) {
+      return {
+        message: 'The routing backend did not return JSON. Make sure the Django server is running.',
+      };
+    }
+
+    throw new Error('The routing backend returned an invalid response.');
+  }
+}
+
 function App() {
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
@@ -450,10 +482,15 @@ function App() {
         body: JSON.stringify({
           start: startPoint,
           end: endPoint,
+          weights: routeWeightsFromPreferences({
+            greeneryPreference,
+            noiseAvoidance,
+            airQualityPreference,
+          }),
         }),
       });
 
-      const responsePayload = await response.json();
+      const responsePayload = await readJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(responsePayload.message || 'Unable to calculate the route.');

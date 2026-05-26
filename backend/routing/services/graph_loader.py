@@ -19,7 +19,16 @@ def _graph_file() -> Path:
 
 
 def _deserialize_graph(payload: dict) -> RoutingGraph:
-    graph = RoutingGraph(metadata=payload.get('metadata', {}))
+    raw_edges = payload.get('edges', [])
+    graph = RoutingGraph(
+        metadata={
+            **payload.get('metadata', {}),
+            'environmental_scores_available': any(
+                isinstance(raw_edge.get('scores'), dict)
+                for raw_edge in raw_edges
+            ),
+        }
+    )
 
     for raw_node in payload.get('nodes', []):
         graph.add_node(
@@ -29,7 +38,7 @@ def _deserialize_graph(payload: dict) -> RoutingGraph:
             )
         )
 
-    for raw_edge in payload.get('edges', []):
+    for raw_edge in raw_edges:
         graph.add_edge(
             GraphEdge(
                 id=raw_edge['id'],

@@ -1,24 +1,36 @@
-from .models import EdgeScores, GraphEdge, UserWeights, clamp
+from .models import EdgeScores, GraphEdge, UserWeights
 
-ALPHA = {
-    'greenery': 0.35,
-    'air_quality': 0.35,
-    'noise': 0.30,
+COST_MODEL_VERSION = 'preference-penalty-v2'
+
+PREFERENCE_STRENGTH = {
+    'greenery': 3.0,
+    'air_quality': 0.75,
+    'noise': 1.0,
 }
 
-MAX_ENV_PENALTY = 1.25
+MAX_ENV_PENALTY = 4.0
 
 
 def normalized_scores(edge: GraphEdge) -> EdgeScores:
     return edge.scores.clamped()
 
 
+def preference_intensity(weight: float) -> float:
+    return weight * weight
+
+
 def edge_cost(edge: GraphEdge, weights: UserWeights) -> float:
     scores = normalized_scores(edge)
     penalty_sum = (
-        ALPHA['greenery'] * weights.greenery * (1.0 - scores.greenery_score)
-        + ALPHA['air_quality'] * weights.air_quality * (1.0 - scores.air_quality_score)
-        + ALPHA['noise'] * weights.noise * (1.0 - scores.noise_score)
+        PREFERENCE_STRENGTH['greenery']
+        * preference_intensity(weights.greenery)
+        * (1.0 - scores.greenery_score)
+        + PREFERENCE_STRENGTH['air_quality']
+        * preference_intensity(weights.air_quality)
+        * (1.0 - scores.air_quality_score)
+        + PREFERENCE_STRENGTH['noise']
+        * preference_intensity(weights.noise)
+        * (1.0 - scores.noise_score)
     )
     penalty = min(penalty_sum, MAX_ENV_PENALTY)
     return float(edge.length_m) * (1.0 + penalty)
