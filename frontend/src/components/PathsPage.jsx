@@ -24,7 +24,7 @@ function PathCard({ path, savedView, onUsePath, onRequestSavePath, onRemoveSaved
           <p className="path-card__meta">{savedView ? 'Saved route' : 'Recent route'} - {formatDate(path.createdAt)}</p>
         </div>
         <span className="path-chip">
-          AQ {path.preferences?.airQuality ?? 60}% | G {path.preferences?.greenery ?? 70}% | N {path.preferences?.noise ?? 55}%
+          G {path.preferences?.greenery ?? 70}% | L {path.preferences?.noise ?? 55}% | AQ {path.preferences?.airQuality ?? 60}% 
         </span>
       </div>
 
