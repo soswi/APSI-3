@@ -15,8 +15,8 @@ class RoutingConfig(AppConfig):
     name = 'routing'
 
     def ready(self) -> None:
-        if 'runserver' not in sys.argv:
-            return
+        # if 'runserver' not in sys.argv:
+        #     return
 
         if os.environ.get('RUN_MAIN') not in (None, 'true'):
             return
