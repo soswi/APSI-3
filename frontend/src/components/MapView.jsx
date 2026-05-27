@@ -40,6 +40,7 @@ function MapView({ startPoint, endPoint, route, onMapClick }) {
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          referrerPolicy="origin"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 

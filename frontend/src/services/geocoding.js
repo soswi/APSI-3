@@ -95,6 +95,7 @@ export async function searchWarsawAddresses(query) {
     headers: {
       Accept: 'application/json',
     },
+    referrerPolicy: 'origin',
   });
 
   if (!response.ok) {
@@ -120,6 +121,7 @@ export async function reverseGeocodeWarsawPoint(point) {
     headers: {
       Accept: 'application/json',
     },
+    referrerPolicy: 'origin',
   });
 
   if (!response.ok) {
