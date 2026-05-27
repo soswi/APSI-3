@@ -186,7 +186,7 @@ function RoutePanel({
 
           <label className="slider-field" htmlFor="noiseAvoidance">
             <span className="slider-field__top">
-              <span>Avoid loud areas</span>
+              <span>Prefer lit areas</span>
               <strong>{noiseAvoidance}%</strong>
             </span>
             <input
