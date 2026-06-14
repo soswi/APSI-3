@@ -6,7 +6,7 @@ from .models import Coordinate, RoutingError, UserWeights
 from .response import build_response_payload, build_route_geometry
 from .scoring import COST_MODEL_VERSION
 from .search import dijkstra
-from .snapping import create_temporary_overlay, snap_to_graph
+from .snapping import snap_to_graph
 
 
 def _coordinate_from_payload(payload: dict) -> Coordinate:
@@ -37,20 +37,16 @@ def calculate_route(start_payload: dict, end_payload: dict, weights_payload: dic
 
     start_snap = snap_to_graph(graph, start, 'start')
     end_snap = snap_to_graph(graph, end, 'end')
-    overlay_graph, resolved_nodes = create_temporary_overlay(
-        base_graph=graph,
-        snap_points={'start': start_snap, 'end': end_snap},
-    )
 
     path_steps = dijkstra(
-        graph=overlay_graph,
-        source=resolved_nodes['start'],
-        target=resolved_nodes['end'],
+        graph=graph,
+        source=start_snap.snapped_node_id or '',
+        target=end_snap.snapped_node_id or '',
         weights=weights,
     )
 
     route_coordinates, route_edges = build_route_geometry(
-        graph=overlay_graph,
+        graph=graph,
         path_steps=path_steps,
         original_start=start,
         original_end=end,
@@ -62,13 +58,13 @@ def calculate_route(start_payload: dict, end_payload: dict, weights_payload: dic
         start_snap=start_snap,
         end_snap=end_snap,
         algorithm_name='dijkstra',
-        cost_model_version=overlay_graph.metadata.get('cost_model_version', COST_MODEL_VERSION),
+        cost_model_version=graph.metadata.get('cost_model_version', COST_MODEL_VERSION),
     )
-    response_payload['debug']['graph_version'] = overlay_graph.metadata.get('graph_version', 'unknown')
+    response_payload['debug']['graph_version'] = graph.metadata.get('graph_version', 'unknown')
     response_payload['debug']['environmental_scores_available'] = bool(
-        overlay_graph.metadata.get('environmental_scores_available')
+        graph.metadata.get('environmental_scores_available')
     )
-    response_payload['debug']['node_score_source'] = overlay_graph.metadata.get('node_score_source')
+    response_payload['debug']['node_score_source'] = graph.metadata.get('node_score_source')
     response_payload['debug']['preference_weights'] = {
         'greenery': weights.greenery,
         'air_quality': weights.air_quality,

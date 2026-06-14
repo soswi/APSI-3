@@ -92,6 +92,17 @@ function createPathSnapshot({
   };
 }
 
+function buildRouteSummary(responsePayload) {
+  const distance = Number(responsePayload.distance_m ?? 0);
+  const estimatedDuration = Number(responsePayload.estimated_duration_s ?? 0);
+
+  return {
+    distance,
+    estimatedDuration,
+    scores: responsePayload.scores ?? null,
+  };
+}
+
 function routeWeightsFromPreferences({
   greeneryPreference,
   noiseAvoidance,
@@ -130,6 +141,7 @@ function App() {
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
   const [route, setRoute] = useState(null);
+  const [routeSummary, setRouteSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [greeneryPreference, setGreeneryPreference] = useState(70);
@@ -266,6 +278,7 @@ function App() {
     }
 
     setRoute(null);
+    setRouteSummary(null);
     setActivePathId(null);
     setError(null);
   }
@@ -361,6 +374,7 @@ function App() {
     setStartLabel('');
     setEndLabel('');
     setRoute(null);
+    setRouteSummary(null);
     setError(null);
     setIsLoading(false);
     setActivePathId(null);
@@ -388,6 +402,11 @@ function App() {
     setStartLabel(path.startLabel ?? '');
     setEndLabel(path.endLabel ?? '');
     setRoute(path.route ?? [path.startPoint, path.endPoint]);
+    setRouteSummary({
+      distance: Number(path.distance ?? 0),
+      estimatedDuration: Math.round(Number(path.distance ?? 0) / 1.25),
+      scores: null,
+    });
     setGreeneryPreference(path.preferences?.greenery ?? 70);
     setNoiseAvoidance(path.preferences?.noise ?? 55);
     setAirQualityPreference(path.preferences?.airQuality ?? 60);
@@ -604,6 +623,7 @@ function App() {
 
       startTransition(() => {
         setRoute(computedRoute);
+        setRouteSummary(buildRouteSummary(responsePayload));
       });
 
       if (currentUser) {
@@ -700,6 +720,7 @@ function App() {
           currentUser={currentUser}
           isLoading={isLoading}
           hasRoute={Boolean(route)}
+          routeSummary={routeSummary}
           error={error}
           addressInputs={addressInputs}
           addressResults={addressResults}
@@ -733,6 +754,7 @@ function App() {
         <PathsPage
           recentPaths={recentPaths}
           savedPaths={savedPaths}
+          currentUser={currentUser}
           onClose={closeOverlayPage}
           onUsePath={handleUseStoredPath}
           onRequestSavePath={handleRequestSavePath}
