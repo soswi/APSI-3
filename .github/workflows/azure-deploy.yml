@@ -30,7 +30,8 @@ jobs:
         with:
           name: python-app
           path: |
-            backend/
+            .
+            !antenv/
             !backend/antenv/
 
   deploy:
