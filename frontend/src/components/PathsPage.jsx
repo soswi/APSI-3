@@ -65,7 +65,7 @@ function collectRouteStats(recentPaths, savedPaths) {
 
   const preferenceEntries = [
     ['greener areas', greeneryAverage],
-    ['quieter areas', noiseAverage],
+    ['lighter areas', noiseAverage],
     ['better air quality', airQualityAverage],
   ];
   preferenceEntries.sort((left, right) => right[1] - left[1]);
@@ -201,7 +201,7 @@ function PathsPage({ recentPaths, savedPaths, currentUser, onClose, onUsePath, o
                 <div className="stats-card__preferences">
                   <p>You usually prefer <strong>{routeStats.preferences.favoriteLabel}</strong>.</p>
                   <span>Greenery {routeStats.preferences.greenery}%</span>
-                  <span>Quiet {routeStats.preferences.noise}%</span>
+                  <span>Light {routeStats.preferences.noise}%</span>
                   <span>Air quality {routeStats.preferences.airQuality}%</span>
                 </div>
               </div>
