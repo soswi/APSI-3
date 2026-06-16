@@ -13,6 +13,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Collect static files
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          python manage.py collectstatic --noinput
+        env:
+          SECRET_KEY: 'build-time-placeholder'
+          DEBUG: 'False'
+          ALLOWED_HOSTS: 'localhost'
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
