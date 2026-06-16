@@ -10,7 +10,9 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .services import calculate_route
 from .services.models import RoutingError
-from .models import RouteRecord
+from .models import RouteRecord, RouteShare
+from users.models import User, BlockedUser
+from django.db.models import Q
 
 
 @csrf_exempt
@@ -208,3 +210,119 @@ def saved_route_detail_view(request, route_id: int):
     record.save(update_fields=['name', 'saved', 'updated_at'])
 
     return JsonResponse({'route': _serialize_route(record)}, status=200)
+
+def _serialize_share(share: RouteShare) -> dict:
+    return {
+        'id': share.id,
+        'sender': {
+            'id': share.sender.id,
+            'name': share.sender.username,
+            'email': share.sender.email,
+        },
+        'status': share.status,
+        'createdAt': share.created_at.isoformat(),
+        'route': _serialize_route(share.route),
+    }
+
+@require_POST
+def share_route_view(request, route_id: int):
+    auth_response = _require_auth(request)
+    if auth_response is not None:
+        return auth_response
+
+    payload = _parse_json(request)
+    if payload is None:
+        return JsonResponse({'error': 'INVALID_JSON', 'message': 'Request body must be valid JSON.'}, status=400)
+
+    recipient_identifier = (payload.get('recipient') or '').strip()
+    if not recipient_identifier:
+        return JsonResponse({'error': 'INVALID_PAYLOAD', 'message': 'Recipient must be provided.'}, status=400)
+
+    try:
+        route = RouteRecord.objects.get(id=route_id, user=request.user)
+    except RouteRecord.DoesNotExist:
+        return JsonResponse({'error': 'NOT_FOUND', 'message': 'Route not found.'}, status=404)
+
+    # find user by email or username
+    try:
+        recipient = User.objects.get(Q(email=recipient_identifier) | Q(username=recipient_identifier))
+    except User.DoesNotExist:
+        return JsonResponse({'error': 'NOT_FOUND', 'message': 'User not found.'}, status=404)
+    except User.MultipleObjectsReturned:
+        recipient = User.objects.filter(Q(email=recipient_identifier) | Q(username=recipient_identifier)).first()
+
+    if recipient.id == request.user.id:
+        return JsonResponse({'error': 'INVALID_PAYLOAD', 'message': 'You cannot share a route with yourself.'}, status=400)
+
+    # check block status
+    if BlockedUser.objects.filter(blocker=recipient, blocked=request.user).exists():
+        return JsonResponse({'error': 'BLOCKED', 'message': 'This user cannot receive shares from you.'}, status=403)
+
+    share, created = RouteShare.objects.get_or_create(
+        sender=request.user,
+        recipient=recipient,
+        route=route,
+        status='PENDING'
+    )
+    return JsonResponse({'share': _serialize_share(share)}, status=201 if created else 200)
+
+@require_GET
+def pending_shares_view(request):
+    auth_response = _require_auth(request)
+    if auth_response is not None:
+        return auth_response
+
+    shares = RouteShare.objects.select_related('sender', 'route').filter(recipient=request.user, status='PENDING').order_by('-created_at')
+    
+    # filter out blocks
+    blocked_ids = BlockedUser.objects.filter(blocker=request.user).values_list('blocked_id', flat=True)
+    if blocked_ids:
+        shares = shares.exclude(sender_id__in=blocked_ids)
+        
+    return JsonResponse({'shares': [_serialize_share(share) for share in shares]}, status=200)
+
+@require_POST
+def accept_share_view(request, share_id: int):
+    auth_response = _require_auth(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        share = RouteShare.objects.get(id=share_id, recipient=request.user, status='PENDING')
+    except RouteShare.DoesNotExist:
+        return JsonResponse({'error': 'NOT_FOUND', 'message': 'Share not found or already processed.'}, status=404)
+
+    # clone RouteRecord
+    new_route = RouteRecord.objects.create(
+        user=request.user,
+        name=f"Shared: {share.route.name}",
+        saved=True,
+        start_point=share.route.start_point,
+        end_point=share.route.end_point,
+        start_label=share.route.start_label,
+        end_label=share.route.end_label,
+        preferences=share.route.preferences,
+        route=share.route.route,
+        distance_m=share.route.distance_m
+    )
+    
+    share.status = 'ACCEPTED'
+    share.save(update_fields=['status', 'updated_at'])
+
+    return JsonResponse({'route': _serialize_route(new_route)}, status=200)
+
+@require_POST
+def reject_share_view(request, share_id: int):
+    auth_response = _require_auth(request)
+    if auth_response is not None:
+        return auth_response
+
+    try:
+        share = RouteShare.objects.get(id=share_id, recipient=request.user, status='PENDING')
+    except RouteShare.DoesNotExist:
+        return JsonResponse({'error': 'NOT_FOUND', 'message': 'Share not found or already processed.'}, status=404)
+
+    share.status = 'REJECTED'
+    share.save(update_fields=['status', 'updated_at'])
+
+    return JsonResponse({'detail': 'Share rejected.'}, status=200)

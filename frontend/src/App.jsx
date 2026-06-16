@@ -4,6 +4,7 @@ import MapView from './components/MapView';
 import PathsPage from './components/PathsPage';
 import RoutePanel from './components/RoutePanel';
 import SavePathDialog from './components/SavePathDialog';
+import SharePathDialog from './components/SharePathDialog';
 import { reverseGeocodeWarsawPoint, searchWarsawAddresses } from './services/geocoding';
 
 const CSRF_ENDPOINT = '/api/auth/csrf';
@@ -92,6 +93,17 @@ function createPathSnapshot({
   };
 }
 
+function buildRouteSummary(responsePayload) {
+  const distance = Number(responsePayload.distance_m ?? 0);
+  const estimatedDuration = Number(responsePayload.estimated_duration_s ?? 0);
+
+  return {
+    distance,
+    estimatedDuration,
+    scores: responsePayload.scores ?? null,
+  };
+}
+
 function routeWeightsFromPreferences({
   greeneryPreference,
   noiseAvoidance,
@@ -124,23 +136,29 @@ async function readJsonResponse(response) {
   }
 }
 
+const SHARES_PENDING_ENDPOINT = '/api/routes/shares/pending';
+
 function App() {
   const [startPoint, setStartPoint] = useState(null);
   const [endPoint, setEndPoint] = useState(null);
   const [startLabel, setStartLabel] = useState('');
   const [endLabel, setEndLabel] = useState('');
   const [route, setRoute] = useState(null);
+  const [routeSummary, setRouteSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [authNotice, setAuthNotice] = useState(null);
   const [greeneryPreference, setGreeneryPreference] = useState(70);
   const [noiseAvoidance, setNoiseAvoidance] = useState(55);
   const [airQualityPreference, setAirQualityPreference] = useState(60);
   const [savedPaths, setSavedPaths] = useState([]);
   const [recentPaths, setRecentPaths] = useState([]);
+  const [pendingShares, setPendingShares] = useState([]);
   const [activePage, setActivePage] = useState('planner');
   const [currentUser, setCurrentUser] = useState(null);
   const [activePathId, setActivePathId] = useState(null);
   const [pathToSave, setPathToSave] = useState(null);
+  const [pathToShare, setPathToShare] = useState(null);
   const [addressInputs, setAddressInputs] = useState({ start: '', end: '' });
   const [addressResults, setAddressResults] = useState({ start: [], end: [] });
   const [addressLookupLoading, setAddressLookupLoading] = useState({ start: false, end: false });
@@ -215,9 +233,10 @@ function App() {
         }
         setCurrentUser(payload.user);
 
-        const [recent, saved] = await Promise.all([
+        const [recent, saved, shares] = await Promise.all([
           apiFetchJson(RECENT_ENDPOINT),
           apiFetchJson(SAVED_ENDPOINT),
+          apiFetchJson(SHARES_PENDING_ENDPOINT),
         ]);
 
         if (ignore) {
@@ -226,11 +245,13 @@ function App() {
 
         setRecentPaths(recent.routes || []);
         setSavedPaths(saved.routes || []);
+        setPendingShares(shares.shares || []);
       } catch {
         if (!ignore) {
           setCurrentUser(null);
           setRecentPaths([]);
           setSavedPaths([]);
+          setPendingShares([]);
         }
       }
     }
@@ -248,12 +269,14 @@ function App() {
   }
 
   async function refreshRouteHistory() {
-    const [recent, saved] = await Promise.all([
+    const [recent, saved, shares] = await Promise.all([
       apiFetchJson(RECENT_ENDPOINT),
       apiFetchJson(SAVED_ENDPOINT),
+      apiFetchJson(SHARES_PENDING_ENDPOINT),
     ]);
     setRecentPaths(recent.routes || []);
     setSavedPaths(saved.routes || []);
+    setPendingShares(shares.shares || []);
   }
 
   function assignPoint(field, point, label) {
@@ -266,6 +289,7 @@ function App() {
     }
 
     setRoute(null);
+    setRouteSummary(null);
     setActivePathId(null);
     setError(null);
   }
@@ -361,6 +385,7 @@ function App() {
     setStartLabel('');
     setEndLabel('');
     setRoute(null);
+    setRouteSummary(null);
     setError(null);
     setIsLoading(false);
     setActivePathId(null);
@@ -379,6 +404,7 @@ function App() {
   }
 
   function closeOverlayPage() {
+    setAuthNotice(null);
     setActivePage('planner');
   }
 
@@ -388,6 +414,11 @@ function App() {
     setStartLabel(path.startLabel ?? '');
     setEndLabel(path.endLabel ?? '');
     setRoute(path.route ?? [path.startPoint, path.endPoint]);
+    setRouteSummary({
+      distance: Number(path.distance ?? 0),
+      estimatedDuration: Math.round(Number(path.distance ?? 0) / 1.25),
+      scores: null,
+    });
     setGreeneryPreference(path.preferences?.greenery ?? 70);
     setNoiseAvoidance(path.preferences?.noise ?? 55);
     setAirQualityPreference(path.preferences?.airQuality ?? 60);
@@ -514,6 +545,65 @@ function App() {
     }
   }
 
+  function handleRequestSharePath(path) {
+    if (!currentUser) return;
+    setPathToShare(path);
+  }
+
+  function handleCancelSharePath() {
+    setPathToShare(null);
+  }
+
+  async function handleConfirmSharePath(pathId, recipientIdentifier) {
+    if (!currentUser) return;
+
+    try {
+      await apiFetchJson(`/api/routes/${pathId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: recipientIdentifier }),
+      });
+      setPathToShare(null);
+    } catch (shareError) {
+      throw shareError; 
+    }
+  }
+
+  async function handleAcceptShare(shareId) {
+    try {
+      await apiFetchJson(`/api/routes/shares/${shareId}/accept`, {
+        method: 'POST',
+      });
+      await refreshRouteHistory();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function handleRejectShare(shareId) {
+    try {
+      await apiFetchJson(`/api/routes/shares/${shareId}/reject`, {
+        method: 'POST',
+      });
+      setPendingShares((s) => s.filter((x) => x.id !== shareId));
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function handleBlockSender(senderId) {
+    try {
+      await apiFetchJson('/api/users/block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: senderId }),
+      });
+      await refreshRouteHistory();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   async function handleAuthSubmit(formData) {
     const isSignup = activePage === 'signup';
     const endpoint = isSignup ? SIGNUP_ENDPOINT : LOGIN_ENDPOINT;
@@ -528,6 +618,8 @@ function App() {
         password: formData.password,
       };
 
+    setAuthNotice(null);
+
     try {
       const response = await apiFetchJson(endpoint, {
         method: 'POST',
@@ -537,11 +629,17 @@ function App() {
         body: JSON.stringify(payload),
       });
 
+      if (isSignup) {
+        setAuthNotice(response.detail);
+        setActivePage('login');
+        return;
+      }
+
       setCurrentUser(response.user);
       await refreshRouteHistory();
       setActivePage('planner');
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Authentication failed.');
+      setAuthNotice(authError instanceof Error ? authError.message : 'Authentication failed.');
     }
   }
 
@@ -604,6 +702,7 @@ function App() {
 
       startTransition(() => {
         setRoute(computedRoute);
+        setRouteSummary(buildRouteSummary(responsePayload));
       });
 
       if (currentUser) {
@@ -700,6 +799,7 @@ function App() {
           currentUser={currentUser}
           isLoading={isLoading}
           hasRoute={Boolean(route)}
+          routeSummary={routeSummary}
           error={error}
           addressInputs={addressInputs}
           addressResults={addressResults}
@@ -733,10 +833,16 @@ function App() {
         <PathsPage
           recentPaths={recentPaths}
           savedPaths={savedPaths}
+          pendingShares={pendingShares}
+          currentUser={currentUser}
           onClose={closeOverlayPage}
           onUsePath={handleUseStoredPath}
           onRequestSavePath={handleRequestSavePath}
           onRemoveSavedPath={handleRemoveSavedPath}
+          onRequestSharePath={handleRequestSharePath}
+          onAcceptShare={handleAcceptShare}
+          onRejectShare={handleRejectShare}
+          onBlockSender={handleBlockSender}
         />
       ) : null}
 
@@ -744,6 +850,7 @@ function App() {
         <AuthPage
           mode={activePage}
           currentUser={currentUser}
+          notice={authNotice}
           onClose={closeOverlayPage}
           onModeChange={setActivePage}
           onSubmit={handleAuthSubmit}
@@ -756,6 +863,14 @@ function App() {
         onCancel={handleCancelSavePath}
         onSave={handleConfirmSavePath}
       />
+
+      {pathToShare && (
+        <SharePathDialog
+          path={pathToShare}
+          onCancel={handleCancelSharePath}
+          onShare={handleConfirmSharePath}
+        />
+      )}
     </div>
   );
 }

@@ -212,6 +212,42 @@ select {
   gap: 1rem;
 }
 
+.route-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.route-summary__stat,
+.path-stat,
+.stats-card__item {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.route-summary__stat span,
+.path-stat span,
+.stats-card__item span {
+  color: #64748b;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.route-summary__stat strong,
+.path-stat strong,
+.stats-card__item strong {
+  font-size: 1.05rem;
+}
+
+.stats-card__item small {
+  color: #475569;
+  font-weight: 600;
+}
+
 .slider-field {
   display: grid;
   gap: 0.7rem;
@@ -585,6 +621,13 @@ select {
   color: #64748b;
 }
 
+.path-card__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.95rem;
+}
+
 .path-chip {
   display: inline-flex;
   width: fit-content;
@@ -637,6 +680,44 @@ select {
 .page-card__actions {
   display: flex;
   gap: 0.75rem;
+}
+
+.stats-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(236, 254, 255, 0.92), rgba(248, 250, 252, 0.96));
+  border: 1px solid rgba(203, 213, 225, 0.75);
+}
+
+.stats-card__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.stats-card__preferences {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.stats-card__preferences p {
+  width: 100%;
+  margin: 0;
+  color: #0f172a;
+}
+
+.stats-card__preferences span {
+  display: inline-flex;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: #fff;
+  color: #155e75;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .page-tabs {
@@ -762,6 +843,12 @@ select {
   .path-card__actions,
   .page-card__actions {
     flex-direction: column;
+  }
+
+  .route-summary,
+  .path-card__stats,
+  .stats-card__grid {
+    grid-template-columns: 1fr;
   }
 
   .page-tabs {

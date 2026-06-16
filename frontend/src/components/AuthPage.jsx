@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-function AuthPage({ mode, currentUser, onClose, onModeChange, onSubmit, onLogout }) {
+function AuthPage({ mode, currentUser, notice, onClose, onModeChange, onSubmit, onLogout }) {
   const [loginForm, setLoginForm] = useState({
     email: '',
     password: '',
@@ -69,6 +69,8 @@ function AuthPage({ mode, currentUser, onClose, onModeChange, onSubmit, onLogout
                 Sign up
               </button>
             </div>
+
+            {notice ? <p className="helper-text">{notice}</p> : null}
 
             {mode === 'login' ? (
               <form className="form-stack page-card__body" onSubmit={handleLoginSubmit}>
