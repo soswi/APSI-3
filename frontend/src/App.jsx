@@ -144,6 +144,7 @@ function App() {
   const [routeSummary, setRouteSummary] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [authNotice, setAuthNotice] = useState(null);
   const [greeneryPreference, setGreeneryPreference] = useState(70);
   const [noiseAvoidance, setNoiseAvoidance] = useState(55);
   const [airQualityPreference, setAirQualityPreference] = useState(60);
@@ -393,6 +394,7 @@ function App() {
   }
 
   function closeOverlayPage() {
+    setAuthNotice(null);
     setActivePage('planner');
   }
 
@@ -547,6 +549,8 @@ function App() {
         password: formData.password,
       };
 
+    setAuthNotice(null);
+
     try {
       const response = await apiFetchJson(endpoint, {
         method: 'POST',
@@ -556,11 +560,17 @@ function App() {
         body: JSON.stringify(payload),
       });
 
+      if (isSignup) {
+        setAuthNotice(response.detail);
+        setActivePage('login');
+        return;
+      }
+
       setCurrentUser(response.user);
       await refreshRouteHistory();
       setActivePage('planner');
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : 'Authentication failed.');
+      setAuthNotice(authError instanceof Error ? authError.message : 'Authentication failed.');
     }
   }
 
@@ -766,6 +776,7 @@ function App() {
         <AuthPage
           mode={activePage}
           currentUser={currentUser}
+          notice={authNotice}
           onClose={closeOverlayPage}
           onModeChange={setActivePage}
           onSubmit={handleAuthSubmit}
