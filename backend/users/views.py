@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.tokens import default_token_generator
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.http import JsonResponse
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -35,6 +40,18 @@ def _preferences_payload(user: User) -> dict:
 	}
 
 
+def _send_verification_email(user: User) -> None:
+	uid = urlsafe_base64_encode(force_bytes(user.pk))
+	token = default_token_generator.make_token(user)
+	link = f'{settings.BACKEND_URL}/api/auth/verify-email?uid={uid}&token={token}'
+	send_mail(
+		'Confirm your email',
+		f'Click the link to activate your account: {link}',
+		settings.DEFAULT_FROM_EMAIL,
+		[user.email],
+	)
+
+
 @ensure_csrf_cookie
 @require_GET
 def csrf_view(request):
@@ -56,14 +73,29 @@ def signup_view(request):
 
 	try:
 		validate_password(password)
-		user = User.objects.create_user(email=email, username=username, password=password)
+		user = User.objects.create_user(email=email, username=username, password=password, is_active=False)
 	except ValidationError as error:
 		return JsonResponse({'error': 'INVALID_PASSWORD', 'message': ' '.join(error.messages)}, status=400)
 	except Exception as error:
 		return JsonResponse({'error': 'SIGNUP_FAILED', 'message': str(error)}, status=400)
 
-	auth_login(request, user)
-	return JsonResponse({'user': _user_payload(user)}, status=201)
+	_send_verification_email(user)
+	return JsonResponse({'detail': 'Account created. Check your email to confirm your address.'}, status=201)
+
+
+@require_GET
+def verify_email_view(request):
+	try:
+		user = User.objects.get(pk=urlsafe_base64_decode(request.GET.get('uid', '')).decode())
+	except (ValueError, User.DoesNotExist):
+		return JsonResponse({'error': 'INVALID_LINK', 'message': 'Invalid verification link.'}, status=400)
+
+	if not default_token_generator.check_token(user, request.GET.get('token', '')):
+		return JsonResponse({'error': 'INVALID_TOKEN', 'message': 'This verification link is invalid or has expired.'}, status=400)
+
+	user.is_active = True
+	user.save(update_fields=['is_active'])
+	return JsonResponse({'detail': 'Email confirmed. You can now log in.'}, status=200)
 
 
 @require_POST

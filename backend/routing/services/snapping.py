@@ -1,34 +1,79 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 
 from .constants import MAX_SNAP_DISTANCE_M
-from .geometry import dedupe_coordinates, locate_point_on_polyline, polyline_length_m, split_polyline_by_distances
+from .geometry import dedupe_coordinates, haversine_m, local_xy, polyline_length_m, split_polyline_by_distances
 from .models import Coordinate, GraphEdge, GraphNode, RoutingError, RoutingGraph, SnapResult
 
 
 def snap_to_graph(graph: RoutingGraph, point: Coordinate, point_name: str) -> SnapResult:
-    best_result: SnapResult | None = None
+    if not graph.node_spatial_index or not graph.node_projected_xy:
+        raise RoutingError(
+            code='GRAPH_INDEX_NOT_READY',
+            message='The routing graph index is not available.',
+            status_code=503,
+        )
 
-    for edge in graph.edges.values():
-        snapped, distance_m, distance_along_m = locate_point_on_polyline(point, edge.geometry)
-        if best_result is None or distance_m < best_result.distance_m:
-            best_result = SnapResult(
-                original=point,
-                snapped=snapped,
-                edge_id=edge.id,
-                distance_m=distance_m,
-                distance_along_m=distance_along_m,
-            )
+    point_x, point_y = local_xy(point)
+    grid_size_m = graph.node_grid_size_m
+    origin_cell = (int(point_x // grid_size_m), int(point_y // grid_size_m))
+    max_ring = max(1, math.ceil(MAX_SNAP_DISTANCE_M / grid_size_m))
+    best_node_id: str | None = None
+    best_distance_sq = float('inf')
 
-    if best_result is None or best_result.distance_m > MAX_SNAP_DISTANCE_M:
+    for ring in range(max_ring + 1):
+        candidate_found = False
+
+        for cell_x in range(origin_cell[0] - ring, origin_cell[0] + ring + 1):
+            for cell_y in range(origin_cell[1] - ring, origin_cell[1] + ring + 1):
+                if ring > 0 and abs(cell_x - origin_cell[0]) < ring and abs(cell_y - origin_cell[1]) < ring:
+                    continue
+
+                for node_id in graph.node_spatial_index.get((cell_x, cell_y), []):
+                    candidate_found = True
+                    node_x, node_y = graph.node_projected_xy[node_id]
+                    distance_sq = (node_x - point_x) ** 2 + (node_y - point_y) ** 2
+                    if distance_sq < best_distance_sq:
+                        best_distance_sq = distance_sq
+                        best_node_id = node_id
+
+        if candidate_found and best_node_id is not None:
+            break
+
+    if best_node_id is None:
+        for node_id, (node_x, node_y) in graph.node_projected_xy.items():
+            distance_sq = (node_x - point_x) ** 2 + (node_y - point_y) ** 2
+            if distance_sq < best_distance_sq:
+                best_distance_sq = distance_sq
+                best_node_id = node_id
+
+    if best_node_id is None:
         raise RoutingError(
             code=f'{point_name.upper()}_TOO_FAR_FROM_WALKING_NETWORK',
             message=f'The selected {point_name} point is too far from a walkable path.',
             status_code=400,
         )
 
-    return best_result
+    snapped_node = graph.nodes[best_node_id]
+    distance_m = haversine_m(point, snapped_node.coordinate)
+
+    if distance_m > MAX_SNAP_DISTANCE_M:
+        raise RoutingError(
+            code=f'{point_name.upper()}_TOO_FAR_FROM_WALKING_NETWORK',
+            message=f'The selected {point_name} point is too far from a walkable path.',
+            status_code=400,
+        )
+
+    return SnapResult(
+        original=point,
+        snapped=snapped_node.coordinate,
+        edge_id='',
+        distance_m=distance_m,
+        distance_along_m=0.0,
+        snapped_node_id=best_node_id,
+    )
 
 
 def _temp_node_id(label: str, index: int) -> str:

@@ -63,6 +63,9 @@ class RoutingGraph:
     edges: dict[str, GraphEdge] = field(default_factory=dict)
     adjacency: dict[str, list[AdjacencyRef]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+    node_spatial_index: dict[tuple[int, int], list[str]] = field(default_factory=dict, repr=False)
+    node_projected_xy: dict[str, tuple[float, float]] = field(default_factory=dict, repr=False)
+    node_grid_size_m: float = field(default=250.0, repr=False)
 
     def clone(self) -> 'RoutingGraph':
         return deepcopy(self)

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from threading import Lock
 
+from .geometry import local_xy
 from .models import Coordinate, EdgeScores, GraphEdge, GraphNode, RoutingGraph
 
 _GRAPH_CACHE: RoutingGraph | None = None
@@ -61,6 +62,21 @@ def _deserialize_graph(payload: dict) -> RoutingGraph:
     return graph
 
 
+def _attach_node_spatial_index(graph: RoutingGraph) -> None:
+    grid_size_m = graph.node_grid_size_m
+    node_projected_xy: dict[str, tuple[float, float]] = {}
+    node_spatial_index: dict[tuple[int, int], list[str]] = {}
+
+    for node in graph.nodes.values():
+        x, y = local_xy(node.coordinate)
+        node_projected_xy[node.id] = (x, y)
+        cell = (int(x // grid_size_m), int(y // grid_size_m))
+        node_spatial_index.setdefault(cell, []).append(node.id)
+
+    graph.node_projected_xy = node_projected_xy
+    graph.node_spatial_index = node_spatial_index
+
+
 def load_graph() -> RoutingGraph:
     global _GRAPH_CACHE
 
@@ -79,6 +95,7 @@ def load_graph() -> RoutingGraph:
 
         payload = json.loads(graph_file.read_text(encoding='utf-8'))
         _GRAPH_CACHE = _deserialize_graph(payload)
+        _attach_node_spatial_index(_GRAPH_CACHE)
         return _GRAPH_CACHE
 
 

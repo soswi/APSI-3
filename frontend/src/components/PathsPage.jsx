@@ -3,6 +3,35 @@ function formatPoint(point, label) {
   return label ? `${label} (${coordinates})` : coordinates;
 }
 
+function formatDistance(distance) {
+  const value = Number(distance ?? 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 km';
+  }
+  return `${(value / 1000).toFixed(2)} km`;
+}
+
+function formatDuration(seconds) {
+  const value = Number(seconds ?? 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 min';
+  }
+
+  const totalMinutes = Math.max(1, Math.round(value / 60));
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
+}
+
+function estimatedDurationFromDistance(distance) {
+  return Number(distance ?? 0) / 1.25;
+}
+
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleString('en-GB', {
     day: '2-digit',
@@ -12,7 +41,55 @@ function formatDate(timestamp) {
   });
 }
 
-function PathCard({ path, savedView, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+function collectRouteStats(recentPaths, savedPaths) {
+  const uniquePaths = new Map();
+
+  [...recentPaths, ...savedPaths].forEach((path) => {
+    uniquePaths.set(path.id, path);
+  });
+
+  const routes = Array.from(uniquePaths.values());
+
+  if (!routes.length) {
+    return null;
+  }
+
+  const distances = routes.map((path) => Number(path.distance ?? 0)).filter((distance) => Number.isFinite(distance));
+  if (!distances.length) {
+    return null;
+  }
+  const averageDistance = distances.reduce((sum, value) => sum + value, 0) / distances.length;
+  const greeneryAverage = routes.reduce((sum, path) => sum + Number(path.preferences?.greenery ?? 0), 0) / routes.length;
+  const noiseAverage = routes.reduce((sum, path) => sum + Number(path.preferences?.noise ?? 0), 0) / routes.length;
+  const airQualityAverage = routes.reduce((sum, path) => sum + Number(path.preferences?.airQuality ?? 0), 0) / routes.length;
+
+  const preferenceEntries = [
+    ['greener areas', greeneryAverage],
+    ['lighter areas', noiseAverage],
+    ['better air quality', airQualityAverage],
+  ];
+  preferenceEntries.sort((left, right) => right[1] - left[1]);
+
+  return {
+    totalRoutes: routes.length,
+    averageDistance,
+    shortestDistance: Math.min(...distances),
+    longestDistance: Math.max(...distances),
+    averageDuration: estimatedDurationFromDistance(averageDistance),
+    preferences: {
+      greenery: Math.round(greeneryAverage),
+      noise: Math.round(noiseAverage),
+      airQuality: Math.round(airQualityAverage),
+      favoriteLabel: preferenceEntries[0][0],
+    },
+  };
+}
+
+function PathCard({ path, savedView, currentUser, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+  const durationSeconds = estimatedDurationFromDistance(path.distance);
+  const canSave = Boolean(currentUser);
+  const saveDisabledReason = canSave ? '' : 'Sign in to save routes to your account.';
+
   return (
     <article className="path-card">
       <div className="path-card__top">
@@ -24,8 +101,19 @@ function PathCard({ path, savedView, onUsePath, onRequestSavePath, onRemoveSaved
           <p className="path-card__meta">{savedView ? 'Saved route' : 'Recent route'} - {formatDate(path.createdAt)}</p>
         </div>
         <span className="path-chip">
-          G {path.preferences?.greenery ?? 70}% | L {path.preferences?.noise ?? 55}% | AQ {path.preferences?.airQuality ?? 60}% 
+          G {path.preferences?.greenery ?? 70}% | Q {path.preferences?.noise ?? 55}% | AQ {path.preferences?.airQuality ?? 60}%
         </span>
+      </div>
+
+      <div className="path-card__stats">
+        <div className="path-stat">
+          <span>Length</span>
+          <strong>{formatDistance(path.distance)}</strong>
+        </div>
+        <div className="path-stat">
+          <span>Estimated time</span>
+          <strong>{formatDuration(durationSeconds)}</strong>
+        </div>
       </div>
 
       <dl className="path-card__points">
@@ -52,16 +140,28 @@ function PathCard({ path, savedView, onUsePath, onRequestSavePath, onRemoveSaved
             Saved &hearts;
           </button>
         ) : (
-          <button type="button" className="button button--primary" onClick={() => onRequestSavePath(path)}>
-            Save with name
-          </button>
+          <span
+            className="button-tooltip-wrapper"
+            data-tooltip={saveDisabledReason}
+          >
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={() => onRequestSavePath(path)}
+              disabled={!canSave}
+            >
+              Save
+            </button>
+          </span>
         )}
       </div>
     </article>
   );
 }
 
-function PathsPage({ recentPaths, savedPaths, onClose, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+function PathsPage({ recentPaths, savedPaths, currentUser, onClose, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+  const routeStats = collectRouteStats(recentPaths, savedPaths);
+
   return (
     <div className="overlay-page" role="presentation">
       <section className="page-card paths-page" role="dialog" aria-modal="true" aria-labelledby="paths-page-title">
@@ -78,6 +178,40 @@ function PathsPage({ recentPaths, savedPaths, onClose, onUsePath, onRequestSaveP
         <div className="page-card__body page-card__body--scrollable">
           <section className="page-section">
             <div className="page-section__header">
+              <h3>Route statistics</h3>
+              <span>{routeStats?.totalRoutes ?? 0}</span>
+            </div>
+            {routeStats ? (
+              <div className="stats-card">
+                <div className="stats-card__grid">
+                  <div className="stats-card__item">
+                    <span>Average route</span>
+                    <strong>{formatDistance(routeStats.averageDistance)}</strong>
+                    <small>{formatDuration(routeStats.averageDuration)}</small>
+                  </div>
+                  <div className="stats-card__item">
+                    <span>Shortest route</span>
+                    <strong>{formatDistance(routeStats.shortestDistance)}</strong>
+                  </div>
+                  <div className="stats-card__item">
+                    <span>Longest route</span>
+                    <strong>{formatDistance(routeStats.longestDistance)}</strong>
+                  </div>
+                </div>
+                <div className="stats-card__preferences">
+                  <p>You usually prefer <strong>{routeStats.preferences.favoriteLabel}</strong>.</p>
+                  <span>Greenery {routeStats.preferences.greenery}%</span>
+                  <span>Light {routeStats.preferences.noise}%</span>
+                  <span>Air quality {routeStats.preferences.airQuality}%</span>
+                </div>
+              </div>
+            ) : (
+              <p className="empty-state">Calculate a few routes and your summary stats will appear here.</p>
+            )}
+          </section>
+
+          <section className="page-section">
+            <div className="page-section__header">
               <h3>Saved paths</h3>
               <span>{savedPaths.length}</span>
             </div>
@@ -88,6 +222,7 @@ function PathsPage({ recentPaths, savedPaths, onClose, onUsePath, onRequestSaveP
                     key={path.id}
                     path={path}
                     savedView
+                    currentUser={currentUser}
                     onUsePath={onUsePath}
                     onRequestSavePath={onRequestSavePath}
                     onRemoveSavedPath={onRemoveSavedPath}
@@ -111,6 +246,7 @@ function PathsPage({ recentPaths, savedPaths, onClose, onUsePath, onRequestSaveP
                     key={path.id}
                     path={path}
                     savedView={false}
+                    currentUser={currentUser}
                     onUsePath={onUsePath}
                     onRequestSavePath={onRequestSavePath}
                     onRemoveSavedPath={onRemoveSavedPath}
