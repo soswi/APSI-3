@@ -6,6 +6,30 @@ function formatPoint(point) {
   return `${point.lat}, ${point.lng}`;
 }
 
+function formatDistance(distance) {
+  if (!Number.isFinite(distance) || distance <= 0) {
+    return '0 km';
+  }
+
+  return `${(distance / 1000).toFixed(2)} km`;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return '0 min';
+  }
+
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
+}
+
 function AddressField({
   field,
   label,
@@ -83,6 +107,7 @@ function RoutePanel({
   currentUser,
   isLoading,
   hasRoute,
+  routeSummary,
   error,
   addressInputs,
   addressResults,
@@ -186,7 +211,7 @@ function RoutePanel({
 
           <label className="slider-field" htmlFor="noiseAvoidance">
             <span className="slider-field__top">
-              <span>Prefer lit areas</span>
+              <span>Prefer quieter areas</span>
               <strong>{noiseAvoidance}%</strong>
             </span>
             <input
@@ -217,6 +242,22 @@ function RoutePanel({
           </label>
         </div>
       </div>
+
+      {routeSummary ? (
+        <div className="panel__block">
+          <h2>Current route</h2>
+          <div className="route-summary">
+            <div className="route-summary__stat">
+              <span>Length</span>
+              <strong>{formatDistance(routeSummary.distance)}</strong>
+            </div>
+            <div className="route-summary__stat">
+              <span>Estimated time</span>
+              <strong>{formatDuration(routeSummary.estimatedDuration)}</strong>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="panel__actions">
         <button type="button" className="button button--ghost" onClick={onReset}>
