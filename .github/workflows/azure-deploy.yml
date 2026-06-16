@@ -35,6 +35,9 @@ jobs:
           DEBUG: 'False'
           ALLOWED_HOSTS: 'localhost'
 
+      - name: Remove Oryx manifest to prevent interference
+        run: rm -f backend/oryx-manifest.toml
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
