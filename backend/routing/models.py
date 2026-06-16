@@ -32,3 +32,23 @@ class RouteRecord(models.Model):
 
     def __str__(self) -> str:
         return f'{self.user_id}: {self.name or "Route"}'
+
+class RouteShare(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('ACCEPTED', 'Accepted'),
+        ('REJECTED', 'Rejected'),
+    ]
+
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='sent_shares')
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='received_shares')
+    route = models.ForeignKey(RouteRecord, on_delete=models.CASCADE, related_name='shares')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self) -> str:
+        return f'{self.sender_id} -> {self.recipient_id}: {self.route_id} ({self.status})'

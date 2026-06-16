@@ -43,3 +43,14 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 	def __str__(self) -> str:
 		return f'{self.username} <{self.email}>'
+
+class BlockedUser(models.Model):
+	blocker = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocked_users')
+	blocked = models.ForeignKey(User, on_delete=models.CASCADE, related_name='blocked_by')
+	created_at = models.DateTimeField(default=timezone.now)
+
+	class Meta:
+		unique_together = ('blocker', 'blocked')
+
+	def __str__(self) -> str:
+		return f'{self.blocker} blocked {self.blocked}'

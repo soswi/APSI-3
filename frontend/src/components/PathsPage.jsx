@@ -85,7 +85,7 @@ function collectRouteStats(recentPaths, savedPaths) {
   };
 }
 
-function PathCard({ path, savedView, currentUser, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+function PathCard({ path, savedView, currentUser, onUsePath, onRequestSavePath, onRemoveSavedPath, onRequestSharePath }) {
   const durationSeconds = estimatedDurationFromDistance(path.distance);
   const canSave = Boolean(currentUser);
   const saveDisabledReason = canSave ? '' : 'Sign in to save routes to your account.';
@@ -132,9 +132,14 @@ function PathCard({ path, savedView, currentUser, onUsePath, onRequestSavePath, 
           Open
         </button>
         {savedView ? (
-          <button type="button" className="button button--danger" onClick={() => onRemoveSavedPath(path.id)}>
-            Remove
-          </button>
+          <>
+            <button type="button" className="button button--ghost" onClick={() => onRequestSharePath(path)}>
+              Share
+            </button>
+            <button type="button" className="button button--danger" onClick={() => onRemoveSavedPath(path.id)}>
+              Remove
+            </button>
+          </>
         ) : path.saved ? (
           <button type="button" className="button button--secondary" disabled>
             Saved &hearts;
@@ -159,7 +164,56 @@ function PathCard({ path, savedView, currentUser, onUsePath, onRequestSavePath, 
   );
 }
 
-function PathsPage({ recentPaths, savedPaths, currentUser, onClose, onUsePath, onRequestSavePath, onRemoveSavedPath }) {
+function InboxCard({ share, onAccept, onReject, onBlock }) {
+  const { route, sender, id } = share;
+  const durationSeconds = estimatedDurationFromDistance(route.distance);
+
+  return (
+    <article className="path-card share-card">
+      <div className="path-card__top">
+        <div>
+          <div className="path-card__title-row">
+            <h3>{route.name}</h3>
+          </div>
+          <p className="path-card__meta">Shared by: {sender.name} ({sender.email}) - {formatDate(share.createdAt)}</p>
+        </div>
+        <span className="path-chip">
+          G {route.preferences?.greenery ?? 70}% | Q {route.preferences?.noise ?? 55}% | AQ {route.preferences?.airQuality ?? 60}%
+        </span>
+      </div>
+      
+      <div className="path-card__stats">
+        <div className="path-stat">
+          <span>Length</span>
+          <strong>{formatDistance(route.distance)}</strong>
+        </div>
+        <div className="path-stat">
+          <span>Estimated time</span>
+          <strong>{formatDuration(durationSeconds)}</strong>
+        </div>
+      </div>
+      
+      <dl className="path-card__points">
+        <div>
+          <dt>Start</dt>
+          <dd>{formatPoint(route.startPoint, route.startLabel)}</dd>
+        </div>
+        <div>
+          <dt>End</dt>
+          <dd>{formatPoint(route.endPoint, route.endLabel)}</dd>
+        </div>
+      </dl>
+      
+      <div className="path-card__actions" style={{gap: '0.5rem', flexWrap: 'wrap'}}>
+        <button type="button" className="button button--primary" onClick={() => onAccept(id)}>Accept</button>
+        <button type="button" className="button button--ghost" onClick={() => onReject(id)}>Reject</button>
+        <button type="button" className="button button--danger" style={{marginLeft: 'auto'}} onClick={() => onBlock(sender.id)}>Block Sender</button>
+      </div>
+    </article>
+  );
+}
+
+function PathsPage({ recentPaths, savedPaths, pendingShares, currentUser, onClose, onUsePath, onRequestSavePath, onRemoveSavedPath, onRequestSharePath, onAcceptShare, onRejectShare, onBlockSender }) {
   const routeStats = collectRouteStats(recentPaths, savedPaths);
 
   return (
@@ -176,6 +230,27 @@ function PathsPage({ recentPaths, savedPaths, currentUser, onClose, onUsePath, o
         </div>
 
         <div className="page-card__body page-card__body--scrollable">
+        
+          {currentUser && pendingShares && pendingShares.length > 0 && (
+            <section className="page-section">
+              <div className="page-section__header">
+                <h3>Shared with you</h3>
+                <span>{pendingShares.length}</span>
+              </div>
+              <div className="path-list">
+                {pendingShares.map((share) => (
+                  <InboxCard
+                    key={share.id}
+                    share={share}
+                    onAccept={onAcceptShare}
+                    onReject={onRejectShare}
+                    onBlock={onBlockSender}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           <section className="page-section">
             <div className="page-section__header">
               <h3>Route statistics</h3>
@@ -226,6 +301,7 @@ function PathsPage({ recentPaths, savedPaths, currentUser, onClose, onUsePath, o
                     onUsePath={onUsePath}
                     onRequestSavePath={onRequestSavePath}
                     onRemoveSavedPath={onRemoveSavedPath}
+                    onRequestSharePath={onRequestSharePath}
                   />
                 ))}
               </div>

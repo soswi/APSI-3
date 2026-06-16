@@ -14,7 +14,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .models import User
+from .models import User, BlockedUser
 
 
 def _parse_json(request):
@@ -164,3 +164,27 @@ def preferences_view(request):
 
 	request.user.save(update_fields=['preference_greenery', 'preference_noise', 'preference_air_quality'])
 	return JsonResponse({'preferences': _preferences_payload(request.user)}, status=200)
+
+@require_POST
+def block_user_view(request):
+	if not request.user.is_authenticated:
+		return JsonResponse({'error': 'UNAUTHORIZED', 'message': 'Authentication required.'}, status=401)
+
+	payload = _parse_json(request)
+	if payload is None:
+		return JsonResponse({'error': 'INVALID_JSON', 'message': 'Request body must be valid JSON.'}, status=400)
+
+	user_id = payload.get('userId')
+	if user_id is None:
+		return JsonResponse({'error': 'INVALID_PAYLOAD', 'message': 'User ID is required.'}, status=400)
+
+	if request.user.id == user_id:
+		return JsonResponse({'error': 'INVALID_PAYLOAD', 'message': 'You cannot block yourself.'}, status=400)
+
+	try:
+		user_to_block = User.objects.get(pk=user_id)
+	except User.DoesNotExist:
+		return JsonResponse({'error': 'NOT_FOUND', 'message': 'User not found.'}, status=404)
+
+	BlockedUser.objects.get_or_create(blocker=request.user, blocked=user_to_block)
+	return JsonResponse({'detail': 'User blocked successfully.'}, status=200)
